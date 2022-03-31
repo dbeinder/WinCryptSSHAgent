@@ -3,9 +3,11 @@ package capi
 import (
 	"crypto/x509"
 	"fmt"
-	"github.com/fullsailor/pkcs7"
+	"sort"
 	"syscall"
 	"unsafe"
+
+	"github.com/fullsailor/pkcs7"
 )
 
 const (
@@ -122,6 +124,22 @@ func certGetCertificateContextProperty(context *syscall.CertContext, dwPropId ui
 	return int(r0)
 }
 
+func certGetCertificateContextStringProperty(context *syscall.CertContext, dwPropId uint32) string {
+	pcbData := uint32(0)
+	pcbDataPtr := uintptr(unsafe.Pointer(&pcbData))
+	hasProp, _, _ := syscall.SyscallN(procCertGetCertificateContextProperty.Addr(), uintptr(unsafe.Pointer(context)), uintptr(dwPropId), uintptr(0), pcbDataPtr)
+	if hasProp == 0 {
+		return ""
+	}
+	pvData := make([]uint16, 1+pcbData/2)
+	pvDataPtr := uintptr(unsafe.Pointer(&pvData[0]))
+	success, _, _ := syscall.SyscallN(procCertGetCertificateContextProperty.Addr(), uintptr(unsafe.Pointer(context)), uintptr(dwPropId), pvDataPtr, pcbDataPtr)
+	if success == 0 {
+		return ""
+	}
+	return syscall.UTF16ToString(pvData)
+}
+
 // nCryptSetPropertyString sets a string value for a named property for a CNG key storage object.
 func nCryptSetPropertyString(hObject uintptr, pszProperty string, pbInput string, dwFlags uint32) (err error) {
 
@@ -184,6 +202,7 @@ func cryptAcquireCertificatePrivateKey(certContext uintptr, flags uint32) (provC
 }
 
 type Certificate struct {
+	userIndex   int
 	certContext uintptr
 	*x509.Certificate
 }
@@ -211,6 +230,8 @@ func LoadUserCerts() ([]*Certificate, error) {
 		CERT_STORE_READONLY_FLAG       = 0x00008000
 		CRYPT_E_NOT_FOUND              = 0x80092004
 		CERT_KEY_SPEC_PROP_ID          = 6
+		CERT_FRIENDLY_NAME_PROP_ID     = 11
+		CERT_DESCRIPTION_PROP_ID       = 13
 	)
 	ptr, _ := syscall.BytePtrFromString("My")
 	store, err := syscall.CertOpenStore(
@@ -227,6 +248,7 @@ func LoadUserCerts() ([]*Certificate, error) {
 
 	certs := make([]*Certificate, 0)
 	var cert *syscall.CertContext
+	var anyWithUserIndex bool = false
 	for {
 		cert, err = syscall.CertEnumCertificatesInStore(store, cert)
 		if err != nil {
@@ -245,6 +267,10 @@ func LoadUserCerts() ([]*Certificate, error) {
 		if propID == 0 {
 			continue
 		}
+		desc := certGetCertificateContextStringProperty(cert, CERT_DESCRIPTION_PROP_ID)
+		var userIndex int = -1
+		match, _ := fmt.Sscanf(desc, "WinCryptSSHAgent[%d]", &userIndex)
+		anyWithUserIndex = anyWithUserIndex || match > 0
 		// Copy the buf, since ParseCertificate does not create its own copy.
 		buf := (*[1 << 20]byte)(unsafe.Pointer(cert.EncodedCert))[:]
 		buf2 := make([]byte, cert.Length)
@@ -255,10 +281,22 @@ func LoadUserCerts() ([]*Certificate, error) {
 				continue
 			}
 			certs = append(certs, &Certificate{
+				userIndex,
 				cc,
 				c,
 			})
 		}
+	}
+
+	if anyWithUserIndex {
+		filteredCerts := make([]*Certificate, 0)
+		for _, c := range certs {
+			if c.userIndex >= 0 {
+				filteredCerts = append(filteredCerts, c)
+			}
+		}
+		sort.Slice(filteredCerts[:], func(a, b int) bool { return filteredCerts[a].userIndex < filteredCerts[b].userIndex })
+		return filteredCerts, nil
 	}
 	return certs, nil
 }
