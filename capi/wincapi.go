@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/fullsailor/pkcs7"
@@ -29,20 +30,26 @@ const (
 	AT_SIGNATURE         = uint32(2)
 	CERT_NCRYPT_KEY_SPEC = uint32(0xFFFFFFFF)
 
-	X509_ASN_ENCODING                  = 0x1
-	PKCS_7_ASN_ENCODING                = 0x10000
-	CRYPT_ACQUIRE_CACHE_FLAG           = uint32(0x00000001)
-	CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG = uint32(0x00040000)
+	X509_ASN_ENCODING                    = 0x1
+	PKCS_7_ASN_ENCODING                  = 0x10000
+	CRYPT_ACQUIRE_CACHE_FLAG             = uint32(0x00000001)
+	CRYPT_ACQUIRE_SILENT_FLAG            = uint32(0x40)
+	CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG   = uint32(0x00040000)
+	CRYPT_ACQUIRE_PREFER_NCRYPT_KEY_FLAG = uint32(0x00020000)
 )
 
 var (
 	modcrypt32                            = syscall.NewLazyDLL("crypt32.dll")
 	modncrypt                             = syscall.NewLazyDLL("ncrypt.dll")
+	user32                                = syscall.NewLazyDLL("user32.dll")
 	procCryptSignMessage                  = modcrypt32.NewProc("CryptSignMessage")
 	procCertDuplicateCertificateContext   = modcrypt32.NewProc("CertDuplicateCertificateContext")
 	procCertGetCertificateContextProperty = modcrypt32.NewProc("CertGetCertificateContextProperty")
 	procCryptAcquireCertificatePrivateKey = modcrypt32.NewProc("CryptAcquireCertificatePrivateKey")
 	procNCryptSetProperty                 = modncrypt.NewProc("NCryptSetProperty")
+	procFindWindowExW                     = user32.NewProc("FindWindowExW")
+	procSetForegroundWindow               = user32.NewProc("SetForegroundWindow")
+	procKeybd_event                       = user32.NewProc("keybd_event")
 )
 
 var disablePINCache = true
@@ -77,6 +84,30 @@ type cryptSignMessagePara struct {
 	HashEncryptionAuxInfo   uintptr
 }
 
+func bringWinSecToFront() {
+	title, _ := syscall.UTF16PtrFromString("Windows Security")
+	var hwnd uintptr
+	for i := 0; i < 100; i++ {
+		time.Sleep(100 * time.Millisecond)
+		hwnd, _, _ = syscall.SyscallN(procFindWindowExW.Addr(), 0, 0, 0, uintptr(unsafe.Pointer(title)))
+		if hwnd != 0 {
+			break
+		}
+	}
+	if hwnd == 0 {
+		return
+	}
+	// Simulate ALT key press/release to bypass the foreground lock restriction
+	const (
+		VK_MENU            = 0x12
+		KEYEVENTF_EXTENDEDKEY = 0x0001
+		KEYEVENTF_KEYUP       = 0x0002
+	)
+	syscall.SyscallN(procKeybd_event.Addr(), VK_MENU, 0, KEYEVENTF_EXTENDEDKEY, 0)
+	syscall.SyscallN(procKeybd_event.Addr(), VK_MENU, 0, KEYEVENTF_EXTENDEDKEY|KEYEVENTF_KEYUP, 0)
+	syscall.SyscallN(procSetForegroundWindow.Addr(), hwnd)
+}
+
 func cryptSignMessage(para *cryptSignMessagePara, data []byte) (sign []byte, err error) {
 	dataPtr := uintptr(unsafe.Pointer(&data[0]))
 	dataSize := uint32(len(data))
@@ -85,6 +116,7 @@ func cryptSignMessage(para *cryptSignMessagePara, data []byte) (sign []byte, err
 	size := uint32(0x2000)
 	sizePtr := uintptr(unsafe.Pointer(&size))
 	resultPtr := uintptr(unsafe.Pointer(&result[0]))
+	go bringWinSecToFront()
 	r0, _, e1 := syscall.Syscall9(
 		procCryptSignMessage.Addr(),
 		7,
