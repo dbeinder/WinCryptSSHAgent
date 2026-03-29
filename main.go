@@ -1,6 +1,7 @@
 package main
 
-//go:generate goversioninfo -icon=assets/icon.ico
+//go:generate goversioninfo -icon=assets/icon.ico -o=resource_386.syso
+//go:generate goversioninfo -icon=assets/icon.ico -64 -o=resource_amd64.syso
 
 import (
 	"context"
