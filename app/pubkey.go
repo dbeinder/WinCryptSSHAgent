@@ -2,8 +2,8 @@ package app
 
 import (
 	"context"
-	"io"
 
+	"github.com/buptczq/WinCryptSSHAgent/sshagent"
 	"github.com/buptczq/WinCryptSSHAgent/utils"
 	"golang.org/x/crypto/ssh/agent"
 )
@@ -12,7 +12,7 @@ type PubKeyView struct {
 	ag agent.Agent
 }
 
-func (s *PubKeyView) Run(ctx context.Context, handler func(conn io.ReadWriteCloser)) error {
+func (s *PubKeyView) Run(ctx context.Context, handler func(conn sshagent.ConnWithPID)) error {
 	s.ag = ctx.Value("agent").(agent.Agent)
 	return nil
 }

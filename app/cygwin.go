@@ -6,8 +6,8 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
+	"github.com/buptczq/WinCryptSSHAgent/sshagent"
 	"github.com/buptczq/WinCryptSSHAgent/utils"
-	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -65,7 +65,7 @@ func cygwinHandshake(conn net.Conn, uuid []byte) error {
 	return nil
 }
 
-func (s *Cygwin) Run(ctx context.Context, handler func(conn io.ReadWriteCloser)) error {
+func (s *Cygwin) Run(ctx context.Context, handler func(conn sshagent.ConnWithPID)) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
@@ -112,7 +112,7 @@ func (s *Cygwin) Run(ctx context.Context, handler func(conn io.ReadWriteCloser))
 		}
 		wg.Add(1)
 		go func() {
-			handler(conn)
+			handler(&connWithPID{Conn: conn, pid: utils.GetConnPID(conn)})
 			wg.Done()
 		}()
 	}

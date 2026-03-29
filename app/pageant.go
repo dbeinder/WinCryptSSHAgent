@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"github.com/buptczq/WinCryptSSHAgent/sshagent"
 	"github.com/buptczq/WinCryptSSHAgent/utils"
 	"io"
 	"os"
@@ -10,7 +11,7 @@ import (
 
 type Pageant struct{}
 
-func (*Pageant) Run(ctx context.Context, handler func(conn io.ReadWriteCloser)) error {
+func (*Pageant) Run(ctx context.Context, handler func(conn sshagent.ConnWithPID)) error {
 	debug := false
 	if os.Getenv("WCSA_DEBUG") == "1" {
 		debug = true

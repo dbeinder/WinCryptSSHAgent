@@ -109,12 +109,6 @@ func (s *CAPIAgent) Sign(key ssh.PublicKey, data []byte) (*ssh.Signature, error)
 	return s.SignWithFlags(key, data, 0)
 }
 
-func (s *CAPIAgent) signed(comment string) {
-	utils.Notify(
-		"Authenticated",
-		"Authentication Success by Certificate <"+comment+">",
-	)
-}
 
 func (s *CAPIAgent) SignWithFlags(key ssh.PublicKey, data []byte, flags agent.SignatureFlags) (*ssh.Signature, error) {
 	s.mu.Lock()
@@ -138,11 +132,7 @@ func (s *CAPIAgent) SignWithFlags(key ssh.PublicKey, data []byte, flags agent.Si
 	for _, k := range s.keys {
 		if bytes.Equal(k.signer.PublicKey().Marshal(), wanted) {
 			if flags == 0 {
-				sign, err := k.signer.Sign(rand.Reader, data)
-				if err == nil {
-					s.signed(k.comment)
-				}
-				return sign, err
+				return k.signer.Sign(rand.Reader, data)
 			} else {
 				if algorithmSigner, ok := k.signer.(ssh.AlgorithmSigner); !ok {
 					return nil, fmt.Errorf("agent: signature does not support non-default signature algorithm: %T", k.signer)
@@ -156,11 +146,7 @@ func (s *CAPIAgent) SignWithFlags(key ssh.PublicKey, data []byte, flags agent.Si
 					default:
 						return nil, fmt.Errorf("agent: unsupported signature flags: %d", flags)
 					}
-					sign, err := algorithmSigner.SignWithAlgorithm(rand.Reader, data, algorithm)
-					if err == nil {
-						s.signed(k.comment)
-					}
-					return sign, err
+					return algorithmSigner.SignWithAlgorithm(rand.Reader, data, algorithm)
 				}
 			}
 		}

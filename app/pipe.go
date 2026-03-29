@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/Microsoft/go-winio"
+	"github.com/buptczq/WinCryptSSHAgent/sshagent"
 	"github.com/buptczq/WinCryptSSHAgent/utils"
-	"io"
 	"sync"
 )
 
@@ -13,7 +13,7 @@ type NamedPipe struct {
 	running bool
 }
 
-func (s *NamedPipe) Run(ctx context.Context, handler func(conn io.ReadWriteCloser)) error {
+func (s *NamedPipe) Run(ctx context.Context, handler func(conn sshagent.ConnWithPID)) error {
 	var cfg = &winio.PipeConfig{}
 	pipe, err := winio.ListenPipe(NAMED_PIPE, cfg)
 	if err != nil {
@@ -40,7 +40,7 @@ func (s *NamedPipe) Run(ctx context.Context, handler func(conn io.ReadWriteClose
 		}
 		wg.Add(1)
 		go func() {
-			handler(conn)
+			handler(&connWithPID{Conn: conn, pid: utils.GetConnPID(conn)})
 			wg.Done()
 		}()
 	}

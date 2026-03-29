@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
-	"io"
+	"net"
+
+	"github.com/buptczq/WinCryptSSHAgent/sshagent"
 )
 
 const (
@@ -23,9 +25,16 @@ const (
 
 type Application interface {
 	AppId() AppId
-	Run(ctx context.Context, handler func(conn io.ReadWriteCloser)) error
+	Run(ctx context.Context, handler func(conn sshagent.ConnWithPID)) error
 	Menu(func(id AppId, name string, handler func()))
 }
+
+type connWithPID struct {
+	net.Conn
+	pid uint32
+}
+
+func (c *connWithPID) ClientPID() uint32 { return c.pid }
 
 type AppId int
 

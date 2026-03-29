@@ -2,13 +2,13 @@ package app
 
 import (
 	"context"
-	"io"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/Microsoft/go-winio"
 	"github.com/Microsoft/go-winio/pkg/guid"
+	"github.com/buptczq/WinCryptSSHAgent/sshagent"
 	"github.com/buptczq/WinCryptSSHAgent/utils"
 )
 
@@ -25,12 +25,21 @@ type VSock struct {
 	running bool
 }
 
-type vSockWorker struct {
-	l       net.Listener
-	handler func(conn io.ReadWriteCloser)
+func getHvsockPID(conn net.Conn) uint32 {
+	addr, ok := conn.RemoteAddr().(*winio.HvsockAddr)
+	if !ok {
+		return 0
+	}
+	vmid := addr.VMID.String()
+	return utils.GetWSLHostPID(vmid)
 }
 
-func newVSockWorker(vmid string, handler func(conn io.ReadWriteCloser)) (*vSockWorker, error) {
+type vSockWorker struct {
+	l       net.Listener
+	handler func(conn sshagent.ConnWithPID)
+}
+
+func newVSockWorker(vmid string, handler func(conn sshagent.ConnWithPID)) (*vSockWorker, error) {
 	vmidGUID, err := guid.FromString(vmid)
 	if err != nil {
 		return nil, err
@@ -55,7 +64,7 @@ func (s *vSockWorker) Run() {
 			return
 		}
 		go func() {
-			s.handler(conn)
+			s.handler(&connWithPID{Conn: conn, pid: getHvsockPID(conn)})
 		}()
 	}
 }
@@ -88,7 +97,7 @@ func vmidDiff(old, new []string) (add, del []string) {
 	return
 }
 
-func (s *VSock) wsl2Watcher(ctx context.Context, handler func(conn io.ReadWriteCloser)) {
+func (s *VSock) wsl2Watcher(ctx context.Context, handler func(conn sshagent.ConnWithPID)) {
 	timeout := time.Second * 60
 	ch := make(chan *utils.ProcessEvent, 1)
 	pn, err := utils.NewProcessNotify("wslhost.exe", ch)
@@ -130,7 +139,7 @@ func (s *VSock) wsl2Watcher(ctx context.Context, handler func(conn io.ReadWriteC
 	}
 }
 
-func (s *VSock) Run(ctx context.Context, handler func(conn io.ReadWriteCloser)) error {
+func (s *VSock) Run(ctx context.Context, handler func(conn sshagent.ConnWithPID)) error {
 	isHV := ctx.Value("hv").(bool)
 	if isHV {
 		return nil
@@ -171,7 +180,7 @@ func (s *VSock) Run(ctx context.Context, handler func(conn io.ReadWriteCloser)) 
 		}
 		wg.Add(1)
 		go func() {
-			handler(conn)
+			handler(&connWithPID{Conn: conn, pid: getHvsockPID(conn)})
 			wg.Done()
 		}()
 	}

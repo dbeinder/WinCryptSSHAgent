@@ -11,8 +11,9 @@ import (
 )
 
 var (
-	k32               = windows.NewLazySystemDLL("Kernel32.dll")
-	u32               = windows.NewLazySystemDLL("User32.dll")
+	k32                        = windows.NewLazySystemDLL("Kernel32.dll")
+	u32                        = windows.NewLazySystemDLL("User32.dll")
+	pGetWindowThreadProcessId  = u32.NewProc("GetWindowThreadProcessId")
 	pCreateWindowEx   = u32.NewProc("CreateWindowExW")
 	pDefWindowProc    = u32.NewProc("DefWindowProcW")
 	pDestroyWindow    = u32.NewProc("DestroyWindow")
@@ -33,8 +34,9 @@ const (
 )
 
 type request struct {
-	data     []byte
-	response chan response
+	data      []byte
+	pid       uint32
+	response  chan response
 }
 
 type response struct {
@@ -107,7 +109,7 @@ func NewPageant(debug bool) (*pageantWindow, error) {
 	return win, nil
 }
 
-func (s *pageantWindow) AcceptCtx(ctx context.Context) (io.ReadWriteCloser, error) {
+func (s *pageantWindow) AcceptCtx(ctx context.Context) (*memoryMapConn, error) {
 	select {
 	case req := <-s.requestCh:
 		return &memoryMapConn{req: req}, nil
@@ -226,11 +228,15 @@ func (s *pageantWindow) wndProc(hWnd windows.Handle, message uint32, wParam, lPa
 		return
 	}
 
+	// get sender PID from window handle
+	var senderPID uint32
+	pGetWindowThreadProcessId.Call(wParam, uintptr(unsafe.Pointer(&senderPID)))
+
 	// send data to handler
 	data := make([]byte, size)
 	copy(data, sharedMemoryArray[:size])
 	ch := make(chan response)
-	s.requestCh <- request{data, ch}
+	s.requestCh <- request{data, senderPID, ch}
 	// wait for response
 	resp := <-ch
 	if resp.err == nil {

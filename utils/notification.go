@@ -71,6 +71,13 @@ func Notify(title, message string) {
 	notifier.Notify("info", title, message)
 }
 
+func DismissNotify() {
+	if notifier == nil {
+		return
+	}
+	notifier.Notify("info", "", "")
+}
+
 func RegisterNotifier(n notify.Notifier) {
 	notifier = n
 }

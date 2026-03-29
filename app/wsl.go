@@ -3,8 +3,8 @@ package app
 import (
 	"context"
 	"fmt"
+	"github.com/buptczq/WinCryptSSHAgent/sshagent"
 	"github.com/buptczq/WinCryptSSHAgent/utils"
-	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -40,7 +40,7 @@ func winPath2Unix(path string) string {
 	}
 }
 
-func (s *WSL) Run(ctx context.Context, handler func(conn io.ReadWriteCloser)) error {
+func (s *WSL) Run(ctx context.Context, handler func(conn sshagent.ConnWithPID)) error {
 	fallback := false
 	// try to listen unix sock (Win10 1803)
 	path, l, err := listenUnixSock(WSL_SOCK)
@@ -80,7 +80,7 @@ func (s *WSL) Run(ctx context.Context, handler func(conn io.ReadWriteCloser)) er
 		}
 		wg.Add(1)
 		go func() {
-			handler(conn)
+			handler(&connWithPID{Conn: conn, pid: utils.GetConnPID(conn)})
 			wg.Done()
 		}()
 	}

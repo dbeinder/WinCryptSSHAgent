@@ -23,6 +23,10 @@ type memoryMapConn struct {
 	sync.Mutex
 }
 
+func (m *memoryMapConn) ClientPID() uint32 {
+	return m.req.pid
+}
+
 func (m *memoryMapConn) Read(p []byte) (n int, err error) {
 	m.Lock()
 	defer m.Unlock()

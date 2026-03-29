@@ -26,6 +26,25 @@ func CheckHVService() bool {
 	return true
 }
 
+func GetWSLHostPID(vmid string) uint32 {
+	type Win32_Process struct {
+		ProcessId   uint32
+		CommandLine string
+	}
+	var processes []Win32_Process
+	q := wmi.CreateQuery(&processes, "WHERE Name='wslhost.exe'")
+	err := wmi.Query(q, &processes)
+	if err != nil {
+		return 0
+	}
+	for _, v := range processes {
+		if strings.Contains(v.CommandLine, vmid) {
+			return v.ProcessId
+		}
+	}
+	return 0
+}
+
 func GetVMIDs() []string {
 	type Win32_Process struct {
 		CommandLine string

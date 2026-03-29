@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"github.com/buptczq/WinCryptSSHAgent/sshagent"
 	"github.com/buptczq/WinCryptSSHAgent/utils"
 	"golang.org/x/crypto/ssh"
 	"io"
@@ -21,7 +22,7 @@ type XShell struct {
 	cookie string
 }
 
-func (s *XShell) Run(ctx context.Context, handler func(conn io.ReadWriteCloser)) error {
+func (s *XShell) Run(ctx context.Context, handler func(conn sshagent.ConnWithPID)) error {
 	s.cookie = utils.RandomString(7)
 	win, err := utils.NewXAgent(s.cookie)
 	if err != nil {
@@ -46,8 +47,8 @@ func (s *XShell) Run(ctx context.Context, handler func(conn io.ReadWriteCloser))
 			continue
 		}
 		wg.Add(1)
-		go func(c io.ReadWriteCloser) {
-			w := &xshellProxy{conn: c}
+		go func(c net.Conn) {
+			w := &xshellProxy{conn: c, pid: utils.GetConnPID(c)}
 			handler(w)
 			wg.Done()
 		}(conn)
@@ -128,10 +129,13 @@ func xshellHandshake(conn net.Conn, cookie string) error {
 
 type xshellProxy struct {
 	conn    io.ReadWriteCloser
+	pid     uint32
 	buf     []byte
 	wlength int
 	wbuf    []byte
 }
+
+func (s *xshellProxy) ClientPID() uint32 { return s.pid }
 
 type signRequestAgentMsg struct {
 	KeyBlob []byte `sshtype:"13"`
